@@ -31,7 +31,7 @@ You bring the workload and a small amount of configuration. AKS brings the domai
 
 ## Prerequisites
 
-- The Azure CLI. If you don't have it, see [Install the Azure CLI](/cli/azure/install-azure-cli).
+- The Azure CLI version `2.86.0` or later. Run `az --version` to check your version, and run `az upgrade` to update. If you don't have the Azure CLI, see [Install the Azure CLI](/cli/azure/install-azure-cli).
 - The `aks-preview` Azure CLI extension. Install or update it with the following command:
 
   ```azurecli-interactive
@@ -40,6 +40,7 @@ You bring the workload and a small amount of configuration. AKS brings the domai
   ```
 
 - An AKS cluster that uses a managed identity. The default domain feature is part of the application routing add-on, which you enable in the next section.
+- The [application routing Kubernetes Gateway API implementation][app-routing-gateway-api]. This article exposes the sample application through the Gateway API. Enable it with the `--enable-app-routing-istio` flag, as shown in the next section. It requires the [Managed Gateway API installation][managed-gateway-api].
 
 ## Enable the default domain feature
 
@@ -62,6 +63,7 @@ az aks create \
     --location ${LOCATION} \
     --enable-managed-identity \
     --enable-app-routing \
+    --enable-app-routing-istio \
     --enable-default-domain \
     --generate-ssh-keys
 ```
@@ -75,6 +77,12 @@ az aks approuting update \
     --resource-group ${RESOURCE_GROUP} \
     --name ${CLUSTER_NAME} \
     --enable-default-domain
+
+# Enable the Gateway API implementation if it isn't already enabled
+az aks update \
+    --resource-group ${RESOURCE_GROUP} \
+    --name ${CLUSTER_NAME} \
+    --enable-app-routing-istio
 ```
 
 ## Get the assigned domain name
@@ -174,7 +182,7 @@ The following steps deploy a sample application and expose it on the default dom
 
 ## Expose the application on the default domain
 
-Create an Ingress that uses the application routing ingress class and the managed certificate. The `host` value must be a subdomain of your assigned domain.
+Create a `Gateway` and an `HTTPRoute` that use the `approuting-istio` GatewayClass and the managed certificate. The listener hostname must be a subdomain of your assigned domain.
 
 1. Set a hostname under your assigned domain. Replace `<id>` and `<region>` with the values from your assigned domain:
 
@@ -182,51 +190,75 @@ Create an Ingress that uses the application routing ingress class and the manage
     export HOST=hello.<id>.<region>.aksapp.io
     ```
 
-1. Create a file named `hello-world-ingress.yaml` that has the following content:
+1. Create the `Gateway`. The listener terminates TLS by using the managed certificate in the `cert` Secret:
 
-    ```yaml
-    apiVersion: networking.k8s.io/v1
-    kind: Ingress
+    ```bash
+    cat <<EOF | kubectl apply -f -
+    apiVersion: gateway.networking.k8s.io/v1
+    kind: Gateway
     metadata:
       name: hello-world
     spec:
-      ingressClassName: webapprouting.kubernetes.azure.com
-      rules:
-      - host: HOST_PLACEHOLDER
-        http:
-          paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: hello-world
-                port:
-                  number: 80
-      tls:
-      - hosts:
-        - HOST_PLACEHOLDER
-        secretName: cert
+      gatewayClassName: approuting-istio
+      listeners:
+      - name: https
+        hostname: "${HOST}"
+        port: 443
+        protocol: HTTPS
+        tls:
+          mode: Terminate
+          certificateRefs:
+          - name: cert
+        allowedRoutes:
+          namespaces:
+            from: Same
+    EOF
     ```
 
-1. Replace the placeholder with your hostname and apply the Ingress:
+1. Create the `HTTPRoute` that routes traffic to the sample service:
 
     ```bash
-    sed "s/HOST_PLACEHOLDER/${HOST}/g" hello-world-ingress.yaml | kubectl apply -f -
+    cat <<EOF | kubectl apply -f -
+    apiVersion: gateway.networking.k8s.io/v1
+    kind: HTTPRoute
+    metadata:
+      name: hello-world
+    spec:
+      parentRefs:
+      - name: hello-world
+      hostnames:
+      - "${HOST}"
+      rules:
+      - matches:
+        - path:
+            type: PathPrefix
+            value: /
+        backendRefs:
+        - name: hello-world
+          port: 80
+    EOF
     ```
 
-When you apply the Ingress, the application routing add-on publishes an A record for `HOST` to the managed DNS zone and terminates TLS by using the managed certificate.
+When you apply the `Gateway`, the application routing add-on publishes an A record for the listener hostname to the managed DNS zone and terminates TLS by using the managed certificate.
 
 ## Verify the application
 
-DNS propagation takes a short time after you create the Ingress. Wait a minute, then verify that the domain resolves and serves the trusted certificate.
+DNS propagation takes a short time after you create the `Gateway`. Wait a minute, then verify that the domain resolves and serves the trusted certificate.
 
-1. Confirm that the hostname resolves:
+1. Wait for the `Gateway` to be programmed, then get its public address:
+
+    ```bash
+    kubectl wait --for=condition=programmed gateways.gateway.networking.k8s.io hello-world
+    export INGRESS_HOST=$(kubectl get gateways.gateway.networking.k8s.io hello-world -o jsonpath='{.status.addresses[0].value}')
+    ```
+
+1. Confirm that the hostname resolves to the gateway address:
 
     ```bash
     nslookup ${HOST}
     ```
 
-    The command returns the public IP address of the ingress controller. If it returns no answer, wait a minute for DNS to propagate, then try again.
+    The command returns the public IP address of the gateway. If it returns no answer, wait a minute for DNS to propagate, then try again.
 
 1. Send an HTTPS request and check the certificate:
 
@@ -242,8 +274,8 @@ You can also open `https://<HOST>` in a browser and confirm that the browser sho
 
 The default domain feature works with the ingress options that the application routing add-on manages:
 
-- The managed NGINX ingress controller, as shown in this article.
-- The [application routing Kubernetes Gateway API implementation](./app-routing-gateway-api.md). Use the `approuting-istio` GatewayClass, and reference the managed certificate Secret in the `Gateway` listener `certificateRefs` field.
+- The [application routing Kubernetes Gateway API implementation](./app-routing-gateway-api.md), as shown in this article. Use the `approuting-istio` GatewayClass, and reference the managed certificate Secret in the `Gateway` listener `certificateRefs` field.
+- The managed NGINX ingress controller. Use the `webapprouting.kubernetes.azure.com` ingress class, and reference the managed certificate Secret in the `Ingress` `tls.secretName` field.
 
 Self-managed ingress controllers and self-managed Gateway API resources aren't supported with the default domain feature.
 
@@ -273,3 +305,5 @@ If the certificate doesn't become ready, or the domain doesn't resolve, see [Tro
 <!-- LINKS - internal -->
 [az-aks-get-credentials]: /cli/azure/aks#az-aks-get-credentials
 [kubectl-apply]: https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands#apply
+[app-routing-gateway-api]: ./app-routing-gateway-api.md
+[managed-gateway-api]: ./managed-gateway-api.md
