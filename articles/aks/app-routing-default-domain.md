@@ -29,6 +29,10 @@ The default domain feature builds on the application routing add-on. When you en
 
 You bring the workload and a small amount of configuration. AKS brings the domain, the certificate, and the DNS.
 
+## Region availability
+
+The default domain feature is available in the following Azure regions: `australiacentral`, `australiacentral2`, `australiaeast`, `australiasoutheast`, `austriaeast`, `belgiumcentral`, `brazilsouth`, `brazilsoutheast`, `canadacentral`, `canadaeast`, `centralindia`, `centralus`, `chilecentral`, `denmarkeast`, `eastasia`, `eastus`, `eastus2`, `eastus3`, `francecentral`, `francesouth`, `germanynorth`, `germanywestcentral`, `indiasouthcentral`, `indonesiacentral`, `israelcentral`, `israelnorthwest`, `italynorth`, `japaneast`, `japanwest`, `jioindiacentral`, `jioindiawest`, `koreacentral`, `koreasouth`, `malaysiasouth`, `malaysiawest`, `mexicocentral`, `newzealandnorth`, `northcentralus`, `northeurope`, `norwayeast`, `norwaywest`, `polandcentral`, `qatarcentral`, `southafricanorth`, `southafricawest`, `southcentralus`, `southcentralus2`, `southeastasia`, `southeastus3`, `southeastus5`, `southindia`, `southwestus`, `spaincentral`, `swedencentral`, `swedensouth`, `switzerlandnorth`, `switzerlandwest`, `taiwannorth`, `taiwannorthwest`, `uaecentral`, `uaenorth`, `uksouth`, `ukwest`, `westcentralus`, `westeurope`, `westus`, `westus2`, and `westus3`. New Azure regions are added shortly after they become publicly available.
+
 ## Prerequisites
 
 - The Azure CLI version `2.86.0` or later. Run `az --version` to check your version, and run `az upgrade` to update. If you don't have the Azure CLI, see [Install the Azure CLI](/cli/azure/install-azure-cli).
