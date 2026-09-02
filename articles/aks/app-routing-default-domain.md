@@ -97,7 +97,10 @@ az aks approuting defaultdomain show \
     --name ${CLUSTER_NAME}
 ```
 
-The command returns the domain name in the form `*.<id>.<region>.aksapp.io`, for example `*.6a27935b.westus2.aksapp.io`. You expose your workloads on subdomains of this domain.
+The command returns the domain name in the form `*.<id>.<region>.aksapp.io`, for example `*.6a27935b.westus2.aksapp.io`. You expose your workloads on this domain, or on subdomains of it.
+
+> [!TIP]
+> If you prefer a Kubernetes-native workflow, you can also read the assigned domain from the `status.domain` field of the `DefaultDomainCertificate` resource after you create it. This lets you get the domain by using only the Kubernetes API, without the Azure CLI. See [Request the managed certificate](#request-the-managed-certificate).
 
 ## Connect to your cluster
 
@@ -109,15 +112,22 @@ az aks get-credentials --resource-group ${RESOURCE_GROUP} --name ${CLUSTER_NAME}
 
 ## Request the managed certificate
 
-To get the managed TLS certificate, create a `DefaultDomainCertificate` resource. This resource tells AKS which Kubernetes Secret to store the certificate in. AKS reconciles the certificate into that Secret in the same namespace.
+To get the managed TLS certificate, create a `DefaultDomainCertificate` resource. This resource tells AKS which Kubernetes Secret to store the certificate in. AKS reconciles the certificate into that Secret in the **same namespace** as the `DefaultDomainCertificate` resource. This example uses a dedicated `hello-world` namespace so that the certificate, the `Gateway`, and the workload all live together. A `Gateway` can reference a certificate Secret only from its own namespace, so keep these resources in the same namespace.
 
-1. Create a file named `default-domain-certificate.yaml` that has the following content:
+1. Create the namespace:
+
+    ```bash
+    kubectl create namespace hello-world
+    ```
+
+1. Create a file named `default-domain-certificate.yaml` that has the following content. The `metadata.namespace` field places the resource, and therefore the resulting Secret, in the `hello-world` namespace:
 
     ```yaml
     apiVersion: approuting.kubernetes.azure.com/v1alpha1
     kind: DefaultDomainCertificate
     metadata:
       name: cert
+      namespace: hello-world
     spec:
       target:
         secret: cert
@@ -132,14 +142,26 @@ To get the managed TLS certificate, create a `DefaultDomainCertificate` resource
 1. Confirm that the certificate is ready. Run the following command and check that the `Available` condition reports `True`:
 
     ```bash
-    kubectl get defaultdomaincertificate cert -o jsonpath='{.status.conditions[?(@.type=="Available")].reason}'
+    kubectl get defaultdomaincertificate cert -n hello-world -o jsonpath='{.status.conditions[?(@.type=="Available")].reason}'
     ```
 
-    When the certificate is ready, the command returns `CertificateSecretApplied`, and the Secret named `cert` holds the certificate.
+    When the certificate is ready, the command returns `CertificateSecretApplied`, and the Secret named `cert` in the `hello-world` namespace holds the certificate. Confirm the Secret exists:
+
+    ```bash
+    kubectl get secret cert -n hello-world
+    ```
+
+1. Read the assigned domain from the resource status. The `DefaultDomainCertificate` resource reports the domain in its `status.domain` field, so you can get it without the Azure CLI:
+
+    ```bash
+    kubectl get defaultdomaincertificate cert -n hello-world -o jsonpath='{.status.domain}'
+    ```
+
+    The command returns the assigned domain, for example `*.6a27935b.westus2.aksapp.io`.
 
 ## Deploy a sample application
 
-The following steps deploy a sample application and expose it on the default domain.
+The following steps deploy a sample application into the `hello-world` namespace and expose it on the default domain.
 
 1. Create a file named `hello-world.yaml` that has the following content:
 
@@ -148,6 +170,7 @@ The following steps deploy a sample application and expose it on the default dom
     kind: Deployment
     metadata:
       name: hello-world
+      namespace: hello-world
     spec:
       replicas: 1
       selector:
@@ -168,6 +191,7 @@ The following steps deploy a sample application and expose it on the default dom
     kind: Service
     metadata:
       name: hello-world
+      namespace: hello-world
     spec:
       selector:
         app: hello-world
@@ -184,7 +208,12 @@ The following steps deploy a sample application and expose it on the default dom
 
 ## Expose the application on the default domain
 
-Create a `Gateway` and an `HTTPRoute` that use the `approuting-istio` GatewayClass and the managed certificate. The listener hostname must be a subdomain of your assigned domain.
+Create a `Gateway` and an `HTTPRoute` that use the `approuting-istio` GatewayClass and the managed certificate. Because the managed certificate is a wildcard certificate for `*.<id>.<region>.aksapp.io`, you can use the following as the hostname:
+
+- A subdomain, such as `hello.<id>.<region>.aksapp.io`. This example uses a subdomain.
+- The apex domain itself, `<id>.<region>.aksapp.io`.
+
+You can also route different paths on the same hostname to different services with `HTTPRoute` rules. The `Gateway`, `HTTPRoute`, and workload run in the `hello-world` namespace, alongside the certificate Secret.
 
 1. Set a hostname under your assigned domain. Replace `<id>` and `<region>` with the values from your assigned domain:
 
@@ -192,7 +221,7 @@ Create a `Gateway` and an `HTTPRoute` that use the `approuting-istio` GatewayCla
     export HOST=hello.<id>.<region>.aksapp.io
     ```
 
-1. Create the `Gateway`. The listener terminates TLS by using the managed certificate in the `cert` Secret:
+1. Create the `Gateway`. The listener terminates TLS by using the managed certificate in the `cert` Secret in the same namespace:
 
     ```bash
     cat <<EOF | kubectl apply -f -
@@ -200,6 +229,7 @@ Create a `Gateway` and an `HTTPRoute` that use the `approuting-istio` GatewayCla
     kind: Gateway
     metadata:
       name: hello-world
+      namespace: hello-world
     spec:
       gatewayClassName: approuting-istio
       listeners:
@@ -225,6 +255,7 @@ Create a `Gateway` and an `HTTPRoute` that use the `approuting-istio` GatewayCla
     kind: HTTPRoute
     metadata:
       name: hello-world
+      namespace: hello-world
     spec:
       parentRefs:
       - name: hello-world
@@ -250,8 +281,8 @@ DNS propagation takes a short time after you create the `Gateway`. Wait a minute
 1. Wait for the `Gateway` to be programmed, then get its public address:
 
     ```bash
-    kubectl wait --for=condition=programmed gateways.gateway.networking.k8s.io hello-world
-    export INGRESS_HOST=$(kubectl get gateways.gateway.networking.k8s.io hello-world -o jsonpath='{.status.addresses[0].value}')
+    kubectl wait --for=condition=programmed gateways.gateway.networking.k8s.io hello-world -n hello-world
+    export INGRESS_HOST=$(kubectl get gateways.gateway.networking.k8s.io hello-world -n hello-world -o jsonpath='{.status.addresses[0].value}')
     ```
 
 1. Confirm that the hostname resolves to the gateway address:
