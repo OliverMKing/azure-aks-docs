@@ -32,12 +32,14 @@ You bring the workload and a small amount of configuration. AKS brings the domai
 ## Prerequisites
 
 - The Azure CLI version `2.86.0` or later. Run `az --version` to check your version, and run `az upgrade` to update. If you don't have the Azure CLI, see [Install the Azure CLI](/cli/azure/install-azure-cli).
-- The `aks-preview` Azure CLI extension. Install or update it with the following command:
+- The `aks-preview` Azure CLI extension, version `19.0.0b23` or later. This version adds the `--enable-default-domain` and `--disable-default-domain` parameters. Install or update it with the following command:
 
   ```azurecli-interactive
   az extension add --name aks-preview
   az extension update --name aks-preview
   ```
+
+  Run `az extension show --name aks-preview --query version` to check your installed version.
 
 - An AKS cluster that uses a managed identity. The default domain feature is part of the application routing add-on, which you enable in the next section.
 - The [application routing Kubernetes Gateway API implementation][app-routing-gateway-api]. This article exposes the sample application through the Gateway API. Enable it with the `--enable-app-routing-istio` flag, as shown in the next section. It requires the [Managed Gateway API installation][managed-gateway-api].
