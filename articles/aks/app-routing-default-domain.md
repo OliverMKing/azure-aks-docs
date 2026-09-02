@@ -139,13 +139,19 @@ To get the managed TLS certificate, create a `DefaultDomainCertificate` resource
     kubectl apply -f default-domain-certificate.yaml
     ```
 
-1. Confirm that the certificate is ready. Run the following command and check that the `Available` condition reports `True`:
+1. Confirm that the certificate is ready. AKS issues the certificate after you create the resource, which usually takes a few minutes. Run the following command and check that the `Available` condition reports `True`:
 
     ```bash
     kubectl get defaultdomaincertificate cert -n hello-world -o jsonpath='{.status.conditions[?(@.type=="Available")].reason}'
     ```
 
-    When the certificate is ready, the command returns `CertificateSecretApplied`, and the Secret named `cert` in the `hello-world` namespace holds the certificate. Confirm the Secret exists:
+    Until the certificate is ready, the command returns `CertificateNotReady`. When the certificate is ready, the command returns `CertificateSecretApplied`, and the Secret named `cert` in the `hello-world` namespace holds the certificate. To wait for the certificate instead of checking manually, run the following command:
+
+    ```bash
+    kubectl wait --for=condition=Available defaultdomaincertificate/cert -n hello-world --timeout=5m
+    ```
+
+    Confirm the Secret exists:
 
     ```bash
     kubectl get secret cert -n hello-world
