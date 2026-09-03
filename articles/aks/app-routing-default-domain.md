@@ -45,8 +45,30 @@ The default domain feature is available in the following Azure regions: `austral
 
   Run `az extension show --name aks-preview --query version` to check your installed version.
 
-- An AKS cluster that uses a managed identity. The default domain feature is part of the application routing add-on, which you enable in the next section.
-- The [application routing Kubernetes Gateway API implementation][app-routing-gateway-api]. This article exposes the sample application through the Gateway API. Enable it with the `--enable-app-routing-istio` flag, as shown in the next section. It requires the [Managed Gateway API installation][managed-gateway-api].
+- An AKS cluster that uses a managed identity or has [Microsoft Entra Workload ID](/azure/aks/workload-identity-overview) enabled. The default domain feature requires one of these. The default domain feature is part of the application routing add-on, which you enable in a later section.
+- The [application routing Kubernetes Gateway API implementation][app-routing-gateway-api]. This article exposes the sample application through the Gateway API. Enable it with the `--enable-app-routing-istio` flag, as shown in a later section. It requires the [Managed Gateway API installation][managed-gateway-api].
+
+## Register the default domain feature flag
+
+The default domain feature is in preview and is gated by the `DefaultDomainPreview` feature flag. You must register the flag on your subscription before you enable the feature. If you try to enable the feature on an unregistered subscription, the request fails.
+
+1. Register the `DefaultDomainPreview` feature flag by using the [`az feature register`][az-feature-register] command. The registration takes a few minutes to complete.
+
+    ```azurecli-interactive
+    az feature register --namespace "Microsoft.ContainerService" --name "DefaultDomainPreview"
+    ```
+
+1. When the feature flag state changes from `Registering` to `Registered`, refresh the registration of the `Microsoft.ContainerService` resource provider by using the [`az provider register`][az-provider-register] command.
+
+    ```azurecli-interactive
+    az provider register --namespace "Microsoft.ContainerService"
+    ```
+
+1. Verify the registration state by using the [`az feature show`][az-feature-show] command.
+
+    ```azurecli-interactive
+    az feature show --namespace "Microsoft.ContainerService" --name "DefaultDomainPreview"
+    ```
 
 ## Enable the default domain feature
 
@@ -350,3 +372,6 @@ If the certificate doesn't become ready, or the domain doesn't resolve, see [Tro
 [kubectl-apply]: https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands#apply
 [app-routing-gateway-api]: ./app-routing-gateway-api.md
 [managed-gateway-api]: ./managed-gateway-api.md
+[az-feature-register]: /cli/azure/feature#az-feature-register
+[az-feature-show]: /cli/azure/feature#az-feature-show
+[az-provider-register]: /cli/azure/provider#az-provider-register
