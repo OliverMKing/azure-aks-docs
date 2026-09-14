@@ -46,7 +46,7 @@ The default domain feature is available in the following Azure regions: `austral
   Run `az extension show --name aks-preview --query version` to check your installed version.
 
 - An AKS cluster that uses a managed identity or has [Microsoft Entra Workload ID](/azure/aks/workload-identity-overview) enabled. The default domain feature requires one of these. The default domain feature is part of the application routing add-on, which you enable in a later section.
-- The [application routing Kubernetes Gateway API implementation][app-routing-gateway-api]. This article exposes the sample application through the Gateway API. Enable it with the `--enable-app-routing-istio` flag, as shown in a later section. It requires the [Managed Gateway API installation][managed-gateway-api].
+- The [application routing Kubernetes Gateway API implementation][app-routing-gateway-api]. This article exposes the sample application through the Gateway API. Enable it with the `--enable-app-routing-istio` flag, as shown in a later section. It also requires the [Managed Gateway API installation][managed-gateway-api], which installs the Gateway API custom resource definitions (CRDs). Enable the Managed Gateway API installation with the `--enable-gateway-api` flag, as shown in a later section.
 
 ## Register the default domain feature flag
 
@@ -92,6 +92,7 @@ az aks create \
     --enable-managed-identity \
     --enable-app-routing \
     --enable-app-routing-istio \
+    --enable-gateway-api \
     --enable-default-domain \
     --generate-ssh-keys
 ```
@@ -106,11 +107,12 @@ az aks approuting update \
     --name ${CLUSTER_NAME} \
     --enable-default-domain
 
-# Enable the Gateway API implementation if it isn't already enabled
+# Enable the Gateway API implementation and the managed Gateway API CRDs if they aren't already enabled
 az aks update \
     --resource-group ${RESOURCE_GROUP} \
     --name ${CLUSTER_NAME} \
-    --enable-app-routing-istio
+    --enable-app-routing-istio \
+    --enable-gateway-api
 ```
 
 ## Get the assigned domain name
